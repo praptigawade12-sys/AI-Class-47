@@ -48,4 +48,107 @@ def run_ai_teaching_assistance():
     st.markdown(CHAT_CSS,unsafe_allow_html=True)
     html = 'div class="wrap">'
     for i, qa in enumerate(st.session_state.history_ata, 1):
-        html += f"<di"
+        html += (f'<div class="card"><div class="q">Q{i}: {qa["question"]}'
+                 f'<span class="meta">{qa["difficulty"]}</span></div>'
+                 f'<div class="a">{qa["answer"]}</div></div>')
+    st.markdown(html + "</div>",unsafe_allow_html=True)
+
+def run_math_mastermind():
+    st.title("🧮 Math Mastermind")
+    st.session_state.setdefault("history_mm", [])
+    st.session_state.setdefault("k_mm", 0)
+    c1, c2 = st.columns([1, 2])
+    if c1.button("🧹 Clear", key="c_mm"): st.session_state.history_mm = []; st.rerun()
+    if st.session_state.history_mm:
+        c2.download_button("📄 Export", export_txt(st.session_state.history_mm),
+                           "Math_Mastermind_Solutions.txt", "text/plain")
+    with st.form("mm_form", clear_on_submit=True):
+        q = st.text_area("Math problem:", height=100, key=f"mm_{st.session_state.k_mm}")
+        a, b = st.columns([3, 1])
+        go = a.form_submit_button("Solve", use_container_width=True)
+        lvl = b.selectbox("Level", ["Basic", "Intermediate", "Advanced"], index=1)
+        if go:
+            if not q.strip(): st.warning("⚠️ Enter a problem.")
+            else:
+                with st.spinner("Solving..."):
+                    ans = math_answer(q.strip(), lvl)
+                st.session_state.history_mm.insert(0, {"question": q.strip(), "answer": ans, "difficulty": lvl})
+                st.session_state.k_mm += 1; st.rerun()
+
+    if not st.session_state.history_mm: return
+    st.markdown(CHAT_CSS, unsafe_allow_html=True)
+    html = '<div class="wrap">'
+    for i, qa in enumerate(st.session_state.history_mm, 1):
+        html += (f'<div class="card"><div class="q">Q{i}: {qa["question"]}'
+                 f'<span class="meta">{qa["difficulty"]}</span></div>'
+                 f'<div class="a">{qa["answer"]}</div></div>')
+    st.markdown(html + "</div>", unsafe_allow_html=True)
+
+def run_safe_ai_image_generator():
+    FILTER_API_URL = "https://filters-zeta.vercel.app/api/filter"
+    IMG_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
+    img_client = InferenceClient(provider="hf-inference",api_key=config.HF_API_KEY)
+    st.title("Safe AI Image Generater")
+
+    def is_prompt_safe(prompt: str):
+        try:
+            response = request.post(
+                FILTER_API_URL,
+                json = {"text":prompt},
+                timeout=15
+            )
+            
+            if response_status != 200:
+                return False, f"Filter API failed with status {response.status_code}:{response.text}"
+            data = response.json()
+            if data.get("ok") is True:
+                return True,None
+            return False, data.get("reason","Unsafe prompt.")
+        except Exception as e:
+            return False, f"Filter API error: {e}"
+    
+    def generate_image(prompt:str):
+        safe,err - is_prompt_safe(prompt)
+        if not safe:
+            return None, err
+        
+        try:
+            image = img_client.text_to_image(prompt=prompt, model=IMG_MODEL)
+            return image,None
+        except Exception as e:
+            return None, f"Error during image generation:{e}"
+    with st.form("img_form"):
+        p = st.text_area("Image Description:", height=120)
+        ok = st.form_submit_button("Generate Image")
+
+    if ok:
+        if not p.strip():
+            st.warning("Enter a description")
+        else:
+            with st.spinner("Generating image..."):
+                im,err = generate_image(p.strip())
+            if err:
+                st.error(err)
+            else:
+                st.image(im,use_container_width=True)
+                st.session_state.generated_image = im
+    im = st.session_state.get("generated_image")
+    if im:
+        buf = BytesIO()
+        im.save(buf,format="PNG")
+        st.download_button(
+            "Download",
+            buf.getvalue(),
+            "ai_generated_image.png",
+            "image/png"
+        )
+
+def main():
+    st.sidebar.title("Choose AI Feature")
+    opt = st.sidebar.selectbox("",["AI Teaching Assistant","Math Mastermind","Safe AI Image Generator"])
+    if opt == "AI Teaching Assistant":run_ai_teaching_assistance()
+    elif opt == "Math Mastermind" : run_math_mastermind()
+    else: run_safe_ai_image_generator()
+
+if __name__ == "__main__":
+    main()
